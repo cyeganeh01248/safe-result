@@ -242,6 +242,46 @@ if result.is_error():
     print(f"Error: {result.error}")  # Error: division by zero
 ```
 
+### Using the Typed Error Decorator
+
+The `@Result.safe_with` decorator lets you specify which exception types to catch, providing better type hints:
+
+```python
+from safe_result import Result
+
+@Result.safe_with(ZeroDivisionError, ValueError)
+def divide(a: int, b: int) -> float:
+    if b == 0:
+        raise ZeroDivisionError("Cannot divide by zero")
+    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+        raise ValueError("Inputs must be numbers")
+    return a / b
+
+# Success case
+result = divide(10, 2)
+if not result.is_error():
+    print(result.value)  # 5.0
+
+# Error case - ZeroDivisionError is caught and wrapped
+result = divide(10, 0)
+if result.is_error():
+    # Type checker knows this is either ZeroDivisionError or ValueError
+    print(f"Error: {result.error}")  # Error: Cannot divide by zero
+
+# Error case - ValueError is caught and wrapped
+try:
+    result = divide("10", 2)  # Will raise TypeError
+except TypeError:
+    # TypeError is not caught by safe_with, so it's raised normally
+    print("TypeError was raised as expected")
+
+# You can check for specific error types
+result = divide(10, 0)
+if result.is_error_of_type(ZeroDivisionError):
+    # Type checker knows error is a ZeroDivisionError inside this block
+    print(f"Division error: {result.error}")
+```
+
 ### Async Functions
 
 The `@Result.safe_async` decorator wraps async functions in a Result object:
@@ -265,6 +305,50 @@ async def main():
     # Error case
     result = await async_operation(0)
     print(result.unwrap_or(42))  # 42
+
+asyncio.run(main())
+```
+
+### Async Functions with Typed Errors
+
+The `@Result.safe_async_with` decorator wraps async functions and catches only specified errors:
+
+```python
+import asyncio
+from safe_result import Result
+
+@Result.safe_async_with(ValueError, ConnectionError)
+async def fetch_data(url: str) -> dict:
+    await asyncio.sleep(0.1)
+    if not url:
+        raise ValueError("URL cannot be empty")
+    if url == "invalid":
+        raise ConnectionError("Could not connect to server")
+    if url == "timeout":
+        raise TimeoutError("Connection timed out")  # Not caught by the decorator
+    return {"data": "success"}
+
+async def main():
+    # Success case
+    result = await fetch_data("https://example.com")
+    if not result.is_error():
+        print(result.value)  # {"data": "success"}
+
+    # Error case - ValueError is caught
+    result = await fetch_data("")
+    if result.is_error_of_type(ValueError):
+        print(f"Validation error: {result.error}")  # Validation error: URL cannot be empty
+
+    # Error case - ConnectionError is caught
+    result = await fetch_data("invalid")
+    if result.is_error_of_type(ConnectionError):
+        print(f"Connection failed: {result.error}")  # Connection failed: Could not connect to server
+
+    try:
+        # Error case - TimeoutError is NOT caught and will be raised normally
+        result = await fetch_data("timeout")
+    except TimeoutError as e:
+        print(f"Timeout error was raised normally: {e}")
 
 asyncio.run(main())
 ```
