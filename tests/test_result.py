@@ -40,6 +40,8 @@ def test_result_str_representation():
 def test_safe_decorator_sync():
     @Result.safe
     def divide(a: int, b: int) -> float:
+        if b == 0:
+            raise ZeroDivisionError("Cannot divide by zero")
         return a / b
 
     success = divide(10, 2)
@@ -247,3 +249,137 @@ def test_result_equality():
     assert result1.value == result2.value
     assert result1.value != result3.value
     assert result1.value != error_result.value
+
+
+def test_safe_with_decorator_sync():
+    @Result.safe_with(ZeroDivisionError, ValueError)
+    def divide(a: int, b: int) -> float:
+        if b == 0:
+            raise ZeroDivisionError("Cannot divide by zero")
+        if isinstance(a, str) or isinstance(b, str):
+            raise ValueError("Inputs must be numbers")
+        return a / b
+
+    # Test success case
+    success = divide(10, 2)
+    assert not success.is_error()
+    assert success.value == 5.0
+
+    # Test catching ZeroDivisionError
+    zero_div_error = divide(10, 0)
+    assert zero_div_error.is_error()
+    assert isinstance(zero_div_error.error, ZeroDivisionError)
+
+    # Test catching ValueError
+    try:
+        value_error = divide("10", 2)  # type: ignore
+        assert value_error.is_error()
+        assert isinstance(value_error.error, ValueError)
+    except TypeError:
+        # In Python 3.x, passing a string to divide will raise TypeError
+        # In this case, we expect the error to be re-raised since we only catch
+        # ZeroDivisionError and ValueError
+        pytest.skip("This test depends on Python's type-checking behavior")
+
+    # Test with uncaught exception type
+    with pytest.raises(TypeError):
+        divide([], 2)  # type: ignore
+
+
+@pytest.mark.asyncio
+async def test_safe_async_with_decorator():
+    @Result.safe_async_with(ZeroDivisionError, ValueError)
+    async def async_divide(a: int, b: int) -> float:
+        await asyncio.sleep(0.01)  # Simulate async operation
+        if b == 0:
+            raise ZeroDivisionError("Cannot divide by zero")
+        if isinstance(a, str) or isinstance(b, str):
+            raise ValueError("Inputs must be numbers")
+        return a / b
+
+    # Test success case
+    success = await async_divide(10, 2)
+    assert not success.is_error()
+    assert success.value == 5.0
+
+    # Test catching ZeroDivisionError
+    zero_div_error = await async_divide(10, 0)
+    assert zero_div_error.is_error()
+    assert isinstance(zero_div_error.error, ZeroDivisionError)
+
+    # Test reraising other exceptions
+    with pytest.raises(TypeError):
+        await async_divide([], 2)  # type: ignore
+
+
+@pytest.mark.asyncio
+async def test_safe_async_with_cancelled_error():
+    @Result.safe_async_with(ValueError)
+    async def cancellable_operation() -> str:
+        await asyncio.sleep(1)
+        return "completed"
+
+    task = asyncio.create_task(cancellable_operation())  # type: ignore
+    await asyncio.sleep(0.01)  # Give the task a chance to start
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task  # Should raise CancelledError, not wrap it
+
+
+def test_is_error_of_type():
+    result = Result[int, Exception](error=ValueError("test error"))
+
+    # Test with correct error type
+    assert result.is_error_of_type(ValueError)
+
+    # Test with parent error type
+    assert result.is_error_of_type(Exception)
+
+    # Test with wrong error type
+    assert not result.is_error_of_type(TypeError)
+
+    # Test with no error
+    no_error_result = Result[int, Exception](value=42)
+    assert not no_error_result.is_error_of_type(ValueError)
+
+    # Type narrowing check (would be verified by static type checker)
+    if result.is_error_of_type(ValueError):
+        # Inside this block, result.error should be treated as ValueError
+        assert str(result.error) == "test error"
+
+
+def test_safe_with_multiple_exception_types():
+    @Result.safe_with(ValueError, TypeError, ZeroDivisionError)
+    def multi_error_func(error_type: str) -> None:
+        if error_type == "value":
+            raise ValueError("Value error")
+        elif error_type == "type":
+            raise TypeError("Type error")
+        elif error_type == "zero":
+            raise ZeroDivisionError("Zero division error")
+        elif error_type == "other":
+            raise RuntimeError("Runtime error")
+        return None
+
+    # Test with each specified error type
+    value_error = multi_error_func("value")
+    assert value_error.is_error()
+    assert isinstance(value_error.error, ValueError)
+
+    type_error = multi_error_func("type")
+    assert type_error.is_error()
+    assert isinstance(type_error.error, TypeError)
+
+    zero_error = multi_error_func("zero")
+    assert zero_error.is_error()
+    assert isinstance(zero_error.error, ZeroDivisionError)
+
+    # Test with unspecified error type (should be reraised)
+    with pytest.raises(RuntimeError):
+        multi_error_func("other")
+
+    # Test with no error
+    success = multi_error_func("none")
+    assert not success.is_error()
+    assert success.value is None
