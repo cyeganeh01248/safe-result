@@ -37,10 +37,10 @@ def test_result_str_repr():
     ok_result = Ok(42)
     err_result = Err(ValueError("test error"))
 
-    assert str(ok_result) == "42"
-    assert "Error" in str(err_result)
-    assert "Result(value=42)" == repr(ok_result)
-    assert "Result(error=" in repr(err_result)
+    assert str(ok_result) == "Ok(42)"
+    assert "Err" in str(err_result)
+    assert "Ok(42)" == repr(ok_result)
+    assert "Err(test error)" == repr(err_result)
 
 
 def test_result_error_type_checking():

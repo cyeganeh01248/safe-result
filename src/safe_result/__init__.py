@@ -55,16 +55,6 @@ class Result(Generic[T, E]):
         """Check if the error is of a specific type."""
         return isinstance(self.error, exc_type)
 
-    def __str__(self) -> str:
-        if self.is_error():
-            return f"Error: {self.error}"
-        return str(self.value)
-
-    def __repr__(self) -> str:
-        if self.is_error():
-            return f"Result(error={self.error})"
-        return f"Result(value={self.value})"
-
 
 class Ok(Result[T, E]):
     """A class that represents a successful result with a value."""
@@ -87,6 +77,12 @@ class Ok(Result[T, E]):
         """Return the value (default is ignored for Ok)."""
         return self.value
 
+    def __str__(self) -> str:
+        return f"Ok({self.value})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 class Err(Result[T, E]):
     """A class that represents a failed result with an error."""
@@ -101,13 +97,19 @@ class Err(Result[T, E]):
         """Always returns True for Err instances."""
         return True
 
-    def unwrap(self) -> T:
+    def unwrap(self):
         """Always raises the error for Err instances."""
         raise self.error
 
     def unwrap_or(self, default: T) -> T:
         """Return the default (value is always None for Err)."""
         return default
+
+    def __str__(self) -> str:
+        return f"Err({self.error})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 def safe(func: Callable[P, R]) -> Callable[P, "Result[R, Exception]"]:
