@@ -21,7 +21,7 @@ ExcType = TypeVar("ExcType", bound=Exception)
 
 
 class Result(Generic[T, E]):
-    """A class that represents the result of an operation."""
+    """A class that represents the result of an operation. Only to be used as a type hint."""
 
     def __init__(self, value: Optional[T] = None, error: Optional[E] = None):
         self.value = value
@@ -65,128 +65,171 @@ class Result(Generic[T, E]):
             return f"Result(error={self.error})"
         return f"Result(value={self.value})"
 
-    @staticmethod
-    def safe(func: Callable[P, R]) -> Callable[P, "Result[R, Exception]"]:
-        """
-        Decorator that wraps a synchronous function to return a Result.
-        The decorated function will never raise exceptions.
 
-        Example:
-            >>> @Result.safe
-            ... def divide(a: int, b: int) -> float:
-            ...     return a / b
-            ...
-            >>> result = divide(10, 0)  # Returns Result with ZeroDivisionError
-        """
+class Ok(Result[T, E]):
+    """A class that represents a successful result with a value."""
 
+    __match_args__ = ("value",)
+
+    def __init__(self, value: T):
+        super().__init__(value=value, error=None)
+        self.value: T = value
+
+    def is_error(self) -> bool:
+        """Always returns False for Ok instances."""
+        return False
+
+    def unwrap(self) -> T:
+        """Return the value (always safe for Ok)."""
+        return self.value
+
+    def unwrap_or(self, default: T) -> T:
+        """Return the value (default is ignored for Ok)."""
+        return self.value
+
+
+class Err(Result[T, E]):
+    """A class that represents a failed result with an error."""
+
+    __match_args__ = ("error",)
+
+    def __init__(self, error: E):
+        super().__init__(value=None, error=error)
+        self.error: E = error
+
+    def is_error(self) -> bool:
+        """Always returns True for Err instances."""
+        return True
+
+    def unwrap(self) -> T:
+        """Always raises the error for Err instances."""
+        raise self.error
+
+    def unwrap_or(self, default: T) -> T:
+        """Return the default (value is always None for Err)."""
+        return default
+
+
+def safe(func: Callable[P, R]) -> Callable[P, "Result[R, Exception]"]:
+    """
+    Decorator that wraps a synchronous function to return a Result.
+    The decorated function will never raise exceptions.
+    Example:
+        >>> @Result.safe
+        ... def divide(a: int, b: int) -> float:
+        ...     return a / b
+        ...
+        >>> result = divide(10, 0)  # Returns Result with ZeroDivisionError
+    """
+
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, Exception]":
+        try:
+            return Ok(func(*args, **kwargs))
+        except Exception as e:
+            return Err(e)
+
+    return wrapper
+
+
+def safe_with(
+    *exc_types: Type[ExcType],
+) -> Callable[[Callable[P, R]], Callable[P, "Result[R, ExcType]"]]:
+    """
+    Decorator factory that wraps a synchronous function to return a Result.
+    The decorated function will only catch the specified exception types.
+    Example:
+        >>> @Result.safe_with(ZeroDivisionError, ValueError)
+        ... def divide(a: int, b: int) -> float:
+        ...     return a / b
+        ...
+        >>> result = divide(10, 0)  # Returns Result with ZeroDivisionError
+        >>> result = divide("10", 2)  # Returns Result with ValueError
+        >>> result = divide(10, 2)  # Returns Result with value 5.0
+    """
+
+    def decorator(func: Callable[P, R]) -> Callable[P, "Result[R, ExcType]"]:
         @wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, Exception]":
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, ExcType]":
             try:
-                return Result(value=func(*args, **kwargs))
+                return Ok(func(*args, **kwargs))
+            except exc_types as e:
+                return Err(cast(ExcType, e))
+            # Re-raise other exceptions
             except Exception as e:
-                return Result(error=e)
+                raise e
 
         return wrapper
 
-    @staticmethod
-    def safe_with(
-        *exc_types: Type[ExcType],
-    ) -> Callable[[Callable[P, R]], Callable[P, "Result[R, ExcType]"]]:
-        """
-        Decorator factory that wraps a synchronous function to return a Result.
-        The decorated function will only catch the specified exception types.
+    return decorator
 
-        Example:
-            >>> @Result.safe_with(ZeroDivisionError, ValueError)
-            ... def divide(a: int, b: int) -> float:
-            ...     return a / b
-            ...
-            >>> result = divide(10, 0)  # Returns Result with ZeroDivisionError
-            >>> result = divide("10", 2)  # Returns Result with ValueError
-            >>> result = divide(10, 2)  # Returns Result with value 5.0
-        """
 
-        def decorator(func: Callable[P, R]) -> Callable[P, "Result[R, ExcType]"]:
-            @wraps(func)
-            def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, ExcType]":
-                try:
-                    return Result(value=func(*args, **kwargs))
-                except exc_types as e:
-                    return Result(error=cast(ExcType, e))
-                # Re-raise other exceptions
-                except Exception as e:
-                    raise e
+def safe_async(
+    func: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable["Result[R, Exception]"]]:
+    """
+    Decorator that wraps an asynchronous function to return a Result.
+    The decorated function will never raise exceptions.
+    Example:
+        >>> @Result.safe_async
+        ... async def async_divide(a: int, b: int) -> float:
+        ...     return a / b
+        ...
+        >>> result = await async_divide(10, 0)  # Returns Result with ZeroDivisionError
+    """
 
-            return wrapper
+    @wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, Exception]":
+        try:
+            value = await func(*args, **kwargs)
+            return Ok(value)
+        except asyncio.CancelledError as e:
+            return Err(cast(Exception, e))
+        except Exception as e:
+            return Err(e)
 
-        return decorator
+    return wrapper
 
-    @staticmethod
-    def safe_async(
+
+def safe_async_with(
+    *exc_types: Type[ExcType],
+) -> Callable[
+    [Callable[P, Awaitable[R]]], Callable[P, Awaitable["Result[R, ExcType]"]]
+]:
+    """
+    Decorator factory that wraps an asynchronous function to return a Result.
+    The decorated function will only catch the specified exception types.
+    Example:
+        >>> @Result.safe_async_with(ZeroDivisionError, ValueError)
+        ... async def async_divide(a: int, b: int) -> float:
+        ...     return a / b
+        ...
+        >>> result = await async_divide(10, 0)  # Returns Result with ZeroDivisionError
+        >>> result = await async_divide("10", 2)  # Returns Result with ValueError
+        >>> result = await async_divide(10, 2)  # Returns Result with value 5.0
+    """
+
+    def decorator(
         func: Callable[P, Awaitable[R]],
-    ) -> Callable[P, Awaitable["Result[R, Exception]"]]:
-        """
-        Decorator that wraps an asynchronous function to return a Result.
-        The decorated function will never raise exceptions.
-
-        Example:
-            >>> @Result.safe_async
-            ... async def async_divide(a: int, b: int) -> float:
-            ...     return a / b
-            ...
-            >>> result = await async_divide(10, 0)  # Returns Result with ZeroDivisionError
-        """
-
+    ) -> Callable[P, Awaitable["Result[R, ExcType]"]]:
         @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, Exception]":
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> "Result[R, ExcType]":
             try:
                 value = await func(*args, **kwargs)
-                return Result(value=value)
-            except asyncio.CancelledError as e:
-                return Result(error=cast(E, e))
+                return Ok(value)
+            except asyncio.CancelledError:
+                raise  # Always re-raise CancelledError
+            except exc_types as e:
+                return Err(cast(ExcType, e))
+            # Re-raise other exceptions
             except Exception as e:
-                return Result(error=e)
+                raise e
 
         return wrapper
 
-    @staticmethod
-    def safe_async_with(
-        *exc_types: Type[ExcType],
-    ) -> Callable[
-        [Callable[P, Awaitable[R]]], Callable[P, Awaitable["Result[R, ExcType]"]]
-    ]:
-        """
-        Decorator factory that wraps an asynchronous function to return a Result.
-        The decorated function will only catch the specified exception types.
+    return decorator
 
-        Example:
-            >>> @Result.safe_async_with(ZeroDivisionError, ValueError)
-            ... async def async_divide(a: int, b: int) -> float:
-            ...     return a / b
-            ...
-            >>> result = await async_divide(10, 0)  # Returns Result with ZeroDivisionError
-            >>> result = await async_divide("10", 2)  # Returns Result with ValueError
-            >>> result = await async_divide(10, 2)  # Returns Result with value 5.0
-        """
 
-        def decorator(
-            func: Callable[P, Awaitable[R]],
-        ) -> Callable[P, Awaitable["Result[R, ExcType]"]]:
-            @wraps(func)
-            async def wrapper(
-                *args: P.args, **kwargs: P.kwargs
-            ) -> "Result[R, ExcType]":
-                try:
-                    value = await func(*args, **kwargs)
-                    return Result(value=value)
-                except asyncio.CancelledError:
-                    raise  # Always re-raise CancelledError
-                except exc_types as e:
-                    return Result(error=cast(ExcType, e))
-                # Re-raise other exceptions
-                except Exception as e:
-                    raise e
-
-            return wrapper
-
-        return decorator
+def ok(result: Result[T, E]) -> TypeGuard[Ok[T, E]]:
+    """Type guard to check if a Result is an Ok instance."""
+    return isinstance(result, Ok)
