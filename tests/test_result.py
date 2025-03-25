@@ -257,3 +257,74 @@ def test_complex_pattern_matching():
     assert nested_error_handler(Ok("string")) == "Non-integer value"
     assert nested_error_handler(Err(ValueError())) == "Validation error"
     assert nested_error_handler(Err(ZeroDivisionError())) == "Other error"
+
+
+def test_type_annotations():
+    # Basic type annotations
+    result: Result[int, ValueError] = Ok(42)
+    assert result.value == 42
+    assert result.unwrap() == 42
+    assert not result.is_error()
+    assert result.unwrap_or(0) == 42
+
+    # Error case with type annotation
+    err_result: Result[str, ValueError] = Err(ValueError("error"))
+    assert err_result.is_error()
+    assert isinstance(err_result.error, ValueError)
+    with pytest.raises(ValueError):
+        err_result.unwrap()
+
+    # Function return type annotations
+    def func() -> Result[int, ValueError]:
+        return Ok(42)
+
+    assert func().value == 42
+
+    def err_func() -> Result[str, TypeError]:
+        return Err(TypeError("type error"))
+
+    assert err_func().is_error()
+
+    # Nested type annotations
+    nested: Result[list[int], Exception] = Ok([1, 2, 3])
+    assert nested.unwrap() == [1, 2, 3]
+
+    # Generic type parameters
+    from typing import TypeVar
+
+    T = TypeVar("T")
+
+    def generic_func(value: T) -> Result[T, ValueError]:
+        return Ok(value)
+
+    str_result = generic_func("hello")
+    assert str_result.unwrap() == "hello"
+    int_result = generic_func(42)
+    assert int_result.unwrap() == 42
+
+    # Multiple error types
+    def multi_error() -> Result[int, ValueError | TypeError]:
+        if True:
+            return Err(ValueError("value error"))
+        return Err(TypeError("type error"))
+
+    assert multi_error().is_error()
+
+    # Type covariance
+    class CustomError(ValueError):
+        pass
+
+    def covariant_func() -> Result[int, ValueError]:
+        return Err(CustomError("custom error"))  # Should work due to covariance
+
+    result = covariant_func()
+    assert result.is_error()
+    assert isinstance(result.error, CustomError)
+
+    # Complex nested types
+    complex_result: Result[dict[str, list[int]], Exception] = Ok({"nums": [1, 2, 3]})
+    assert complex_result.unwrap()["nums"] == [1, 2, 3]
+
+    # Optional types
+    optional_result: Result[int | None, ValueError] = Ok(None)
+    assert optional_result.unwrap() is None
