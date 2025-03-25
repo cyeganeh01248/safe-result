@@ -108,6 +108,132 @@ if not ok(foo):
 # foo = divide(10, "2")  # Will raise a TypeError since it's not handled by the decorator
 ```
 
+### Async Support
+
+The `safe_async` and `safe_async_with` decorators provide the same functionality for async functions:
+
+```python
+from safe_result import ok, safe_async, safe_async_with
+import asyncio
+
+
+@safe_async
+async def fetch_data(url: str) -> str:
+    # Simulating an HTTP request that might fail
+    if "invalid" in url:
+        raise ValueError("Invalid URL")
+    return f"Data from {url}"
+
+
+async def main():
+    # Result type is inferred as Result[str, Exception]
+    result = await fetch_data("invalid-url.com")
+
+    if ok(result):
+        print(f"Received: {result.value}")
+    else:
+        print(f"Failed to fetch data: {result.error}")
+
+    # With pattern matching
+    match result:
+        case Ok(value):
+            print(f"Success: {value}")
+        case Err(ValueError):
+            print("Invalid URL provided")
+        case Err():
+            print(f"Unknown error: {result.error}")
+
+
+@safe_async_with(ValueError, ConnectionError)
+async def fetch_with_specific_errors(url: str) -> str:
+    if "invalid" in url:
+        raise ValueError("Invalid URL")
+    if "timeout" in url:
+        raise ConnectionError("Connection timed out")
+    return f"Data from {url}"
+```
+
+### Unwrapping Results
+
+The `unwrap` method allows you to extract the value from a `Result` or propagate the error automatically when used within `@safe` functions:
+
+```python
+from safe_result import Err, Ok, Result, ok, safe
+
+
+@safe
+def divide(a: int, b: int) -> float:
+    return a / b
+
+
+@safe
+def calculate_ratio(x: int, y: int, z: int) -> float:
+    # Unwrap the first result or propagate the error automatically
+    division_result = divide(x, y)
+    first_value = division_result.unwrap()
+
+    # Do another operation that might fail
+    return first_value / z  # If z is 0, this will be wrapped in Err
+
+
+# Usage with error propagation
+result = calculate_ratio(10, 5, 2)  # -> Ok(1.0)
+if ok(result):
+    print(f"Calculation successful: {result.value}")
+
+result = calculate_ratio(10, 0, 2)  # -> Err(division by zero)
+# The ZeroDivisionError from divide() is propagated through calculate_ratio()
+if not ok(result):
+    print(f"First division failed: {result.error}")
+
+result = calculate_ratio(10, 5, 0)  # -> Err(division by zero)
+# The ZeroDivisionError from the final division is captured
+if not ok(result):
+    print(f"Second division failed: {result.error}")
+
+
+# For cases where you want a default value instead of propagating errors
+@safe
+def calculate_ratio_with_default(x: int, y: int, z: int) -> float:
+    # Use unwrap_or to provide a default value instead of propagating errors
+    division_result = divide(x, y)
+    first_value = division_result.unwrap_or(0)
+
+    # Even if the first division fails, we continue with the default value
+    return first_value / z if z != 0 else 0
+```
+
+### Real-world example
+
+Here's a practical example using `httpx` for HTTP requests with proper error handling:
+
+```python
+import asyncio
+import httpx
+from safe_result import safe_async_with, Ok, Err
+
+
+@safe_async_with(httpx.TimeoutException, httpx.HTTPError)
+async def fetch_api_data(url: str, timeout: float = 30.0) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=timeout)
+        response.raise_for_status()  # Raises HTTPError for 4XX/5XX responses
+        return response.json()
+
+
+async def main():
+    result = await fetch_api_data("https://httpbin.org/delay/10", timeout=2.0)
+    match result:
+        case Ok(data):
+            print(f"Data received: {data}")
+        case Err(httpx.TimeoutException):
+            print("Request timed out - the server took too long to respond")
+        case Err(httpx.HTTPStatusError as e):
+            print(f"HTTP Error: {e.response.status_code}")
+        case _ as e:
+            print(f"Unknown error: {e.error}")
+```
+
 ## License
 
 MIT
