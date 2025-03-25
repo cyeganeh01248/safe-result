@@ -14,7 +14,7 @@ uv pip install "git+https://github.com/overflowy/safe-result"
 
 Key features:
 
-- Type-safe result handling with generics support
+- Type safe result handling with generics support
 - Type guards to safely access result values
 - Decorators to automatically wrap function returns in `Result` objects
 - Pattern matching support for elegant error handling
