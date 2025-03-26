@@ -328,3 +328,42 @@ def test_type_annotations():
     # Optional types
     optional_result: Result[int | None, ValueError] = Ok(None)
     assert optional_result.unwrap() is None
+
+
+def test_result_static_methods():
+    # Test Result.ok() static method
+    ok_result = Result.ok(42)
+    assert isinstance(ok_result, Ok)
+    assert ok_result.value == 42
+    assert not ok_result.is_error()
+    assert ok_result.unwrap() == 42
+    assert ok_result.unwrap_or(0) == 42
+
+    # Test Result.err() static method
+    error = ValueError("test error")
+    err_result = Result.err(error)
+    assert isinstance(err_result, Err)
+    assert err_result.error == error
+    assert err_result.is_error()
+    with pytest.raises(ValueError):
+        err_result.unwrap()
+    assert err_result.unwrap_or(42) == 42
+
+    # Test with different types
+    str_result = Result.ok("hello")
+    assert isinstance(str_result, Ok)
+    assert str_result.value == "hello"
+
+    type_error = TypeError("type error")
+    type_err_result = Result.err(type_error)
+    assert isinstance(type_err_result, Err)
+    assert type_err_result.error == type_error
+
+    # Test with complex types
+    list_result = Result.ok([1, 2, 3])
+    assert isinstance(list_result, Ok)
+    assert list_result.value == [1, 2, 3]
+
+    dict_result = Result.ok({"key": "value"})
+    assert isinstance(dict_result, Ok)
+    assert dict_result.value == {"key": "value"}
