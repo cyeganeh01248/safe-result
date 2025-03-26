@@ -21,7 +21,7 @@ ExcType = TypeVar("ExcType", bound=Exception)
 
 
 class Result(Generic[T, E]):
-    """A class that represents the result of an operation. Only to be used as a type hint."""
+    """A class that represents the result of an operation."""
 
     def __init__(self, value: Optional[T] = None, error: Optional[E] = None):
         self.value = value
@@ -54,6 +54,16 @@ class Result(Generic[T, E]):
     def is_error_of_type(self, exc_type: Type[ExcType]) -> TypeGuard[ExcType]:
         """Check if the error is of a specific type."""
         return isinstance(self.error, exc_type)
+
+    @staticmethod
+    def ok(value: T) -> "Ok[T, E]":
+        """Create a new Ok instance."""
+        return Ok(value)
+
+    @staticmethod
+    def err(error: E) -> "Err[T, E]":
+        """Create a new Err instance."""
+        return Err(error)
 
 
 class Ok(Result[T, E]):
