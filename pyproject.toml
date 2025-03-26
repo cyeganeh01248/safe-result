@@ -1,6 +1,6 @@
 [project]
 name = "safe-result"
-version = "3.0.0"
+version = "3.1.0"
 description = "A Python library providing a Result type for elegant error handling, inspired by Rust's Result type."
 readme = "README.md"
 authors = [
