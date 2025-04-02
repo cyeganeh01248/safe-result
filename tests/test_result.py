@@ -7,11 +7,13 @@ from safe_result import (
     Err,
     Ok,
     Result,
+    is_err_of_type,
     ok,
     safe,
     safe_async,
     safe_async_with,
     safe_with,
+    traceback_of,
 )
 
 
@@ -19,7 +21,7 @@ def test_ok_creation_and_unwrap():
     result = Ok(42)
     assert result.value == 42
     assert result.unwrap() == 42
-    assert not result.is_error()
+    assert not result.is_err()
     assert result.unwrap_or(0) == 42
 
 
@@ -27,7 +29,7 @@ def test_err_creation_and_unwrap():
     error = ValueError("test error")
     result = Err(error)
     assert result.error == error
-    assert result.is_error()
+    assert result.is_err()
     with pytest.raises(ValueError):
         result.unwrap()
     assert result.unwrap_or(42) == 42
@@ -40,13 +42,13 @@ def test_result_str_repr():
     assert str(ok_result) == "Ok(42)"
     assert "Err" in str(err_result)
     assert "Ok(42)" == repr(ok_result)
-    assert "Err(test error)" == repr(err_result)
+    assert repr(err_result) == "Err(ValueError('test error'))"
 
 
 def test_result_error_type_checking():
     result = Err(ValueError("test error"))
-    assert result.is_error_of_type(ValueError)
-    assert not result.is_error_of_type(TypeError)
+    assert is_err_of_type(result, ValueError)
+    assert not is_err_of_type(result, TypeError)
 
 
 def test_ok_type_guard():
@@ -67,8 +69,8 @@ def test_safe_decorator():
     assert result1.unwrap() == 5.0
 
     result2 = divide(10, 0)
-    assert result2.is_error()
-    assert result2.is_error_of_type(ZeroDivisionError)
+    assert result2.is_err()
+    assert is_err_of_type(result2, ZeroDivisionError)
 
 
 def test_safe_with_decorator():
@@ -83,8 +85,8 @@ def test_safe_with_decorator():
 
     # Test catching ZeroDivisionError
     result2 = divide(10, 0)
-    assert result2.is_error()
-    assert result2.is_error_of_type(ZeroDivisionError)
+    assert result2.is_err()
+    assert is_err_of_type(result2, ZeroDivisionError)
 
     # Test catching ValueError
     @safe_with(ValueError)
@@ -92,8 +94,8 @@ def test_safe_with_decorator():
         return int(s)
 
     result3 = convert_to_int("not a number")
-    assert result3.is_error()
-    assert result3.is_error_of_type(ValueError)
+    assert result3.is_err()
+    assert is_err_of_type(result3, ValueError)
 
     # Test that other exceptions are not caught
     @safe_with(ValueError)
@@ -105,12 +107,17 @@ def test_safe_with_decorator():
 
 
 def test_result_traceback():
+    # Test with Err
     try:
         raise ValueError("test error")
     except ValueError as e:
-        result = Err(e)
-        assert result.traceback is not None
-        assert "ValueError: test error" in result.traceback
+        err_result = Err(e)
+        assert traceback_of(err_result) is not None
+        assert "ValueError: test error" in traceback_of(err_result)
+
+    # Test with Ok
+    ok_result = Ok(42)
+    assert traceback_of(ok_result) == ""
 
 
 def test_ok_pattern_matching():
@@ -145,8 +152,8 @@ async def test_safe_async_decorator():
 
     # Test error case
     result2 = await async_divide(10, 0)
-    assert result2.is_error()
-    assert result2.is_error_of_type(ZeroDivisionError)
+    assert result2.is_err()
+    assert is_err_of_type(result2, ZeroDivisionError)
 
     # Test with asyncio.CancelledError
     @safe_async
@@ -154,10 +161,9 @@ async def test_safe_async_decorator():
         raise asyncio.CancelledError()
         return 42  # This line will never be reached
 
-    result3 = await cancellable_operation()
-    assert result3.is_error()
-    # We can't use is_error_of_type here since CancelledError doesn't inherit from Exception
-    assert isinstance(result3.error, asyncio.CancelledError)
+    # CancelledError should always be re-raised
+    with pytest.raises(asyncio.CancelledError):
+        await cancellable_operation()
 
 
 @pytest.mark.asyncio  # type: ignore
@@ -173,8 +179,8 @@ async def test_safe_async_with_decorator():
 
     # Test catching ZeroDivisionError
     result2 = await async_divide(10, 0)
-    assert result2.is_error()
-    assert result2.is_error_of_type(ZeroDivisionError)
+    assert result2.is_err()
+    assert is_err_of_type(result2, ZeroDivisionError)
 
     # Test that other exceptions are not caught
     @safe_async_with(ValueError)
@@ -220,8 +226,6 @@ def test_complex_pattern_matching():
                 return f"Zero Division: {e}"
             case Err(e):
                 return f"Unknown Error: {e}"
-            case _:
-                return "Unreachable"
 
     # Test different error scenarios
     value_error_result = create_error("value")
@@ -249,8 +253,6 @@ def test_complex_pattern_matching():
                 return "Validation error"
             case Err(_):
                 return "Other error"
-            case _:
-                return "Unreachable"
 
     assert nested_error_handler(Ok(42)) == "Positive integer"
     assert nested_error_handler(Ok(-1)) == "Non-positive integer"
@@ -264,12 +266,12 @@ def test_type_annotations():
     result: Result[int, ValueError] = Ok(42)
     assert result.value == 42
     assert result.unwrap() == 42
-    assert not result.is_error()
+    assert not result.is_err()
     assert result.unwrap_or(0) == 42
 
     # Error case with type annotation
     err_result: Result[str, ValueError] = Err(ValueError("error"))
-    assert err_result.is_error()
+    assert err_result.is_err()
     assert isinstance(err_result.error, ValueError)
     with pytest.raises(ValueError):
         err_result.unwrap()
@@ -283,7 +285,7 @@ def test_type_annotations():
     def err_func() -> Result[str, TypeError]:
         return Err(TypeError("type error"))
 
-    assert err_func().is_error()
+    assert err_func().is_err()
 
     # Nested type annotations
     nested: Result[list[int], Exception] = Ok([1, 2, 3])
@@ -308,7 +310,7 @@ def test_type_annotations():
             return Err(ValueError("value error"))
         return Err(TypeError("type error"))
 
-    assert multi_error().is_error()
+    assert multi_error().is_err()
 
     # Type covariance
     class CustomError(ValueError):
@@ -318,7 +320,7 @@ def test_type_annotations():
         return Err(CustomError("custom error"))  # Should work due to covariance
 
     result = covariant_func()
-    assert result.is_error()
+    assert result.is_err()
     assert isinstance(result.error, CustomError)
 
     # Complex nested types
@@ -330,40 +332,182 @@ def test_type_annotations():
     assert optional_result.unwrap() is None
 
 
-def test_result_static_methods():
-    # Test Result.ok() static method
-    ok_result = Result.ok(42)
-    assert isinstance(ok_result, Ok)
+def test_ok_properties():
+    ok_result = Ok(42)
     assert ok_result.value == 42
-    assert not ok_result.is_error()
-    assert ok_result.unwrap() == 42
-    assert ok_result.unwrap_or(0) == 42
+    assert ok_result.error is None
+    assert ok_result.is_ok() is True
+    assert ok_result.is_err() is False
 
-    # Test Result.err() static method
+
+def test_ok_map():
+    ok_result = Ok(42)
+    mapped_result = ok_result.map(lambda x: x + 1)
+    assert ok(mapped_result)
+    assert mapped_result.unwrap() == 43
+
+
+@pytest.mark.asyncio
+async def test_ok_map_async():
+    ok_result = Ok(42)
+
+    async def async_add_one(x: int) -> int:
+        await asyncio.sleep(0)  # Simulate async work
+        return x + 1
+
+    mapped_result = await ok_result.map_async(async_add_one)
+    assert ok(mapped_result)
+    assert mapped_result.unwrap() == 43
+
+
+def test_ok_and_then():
+    ok_result = Ok(42)
+
+    def process(x: int) -> Result[str, ValueError]:
+        if x > 0:
+            return Ok(f"Positive: {x}")
+        return Err(ValueError("Value must be positive"))
+
+    result1 = ok_result.and_then(process)
+    assert ok(result1)
+    assert result1.unwrap() == "Positive: 42"
+
+    ok_result_neg = Ok(-1)
+    result2 = ok_result_neg.and_then(process)
+    assert result2.is_err()
+    assert is_err_of_type(result2, ValueError)
+
+
+@pytest.mark.asyncio
+async def test_ok_and_then_async():
+    ok_result = Ok(42)
+
+    async def async_process(x: int) -> Result[str, ValueError]:
+        await asyncio.sleep(0)
+        if x > 0:
+            return Ok(f"Positive: {x}")
+        return Err(ValueError("Value must be positive"))
+
+    result1 = await ok_result.and_then_async(async_process)
+    assert ok(result1)
+    assert result1.unwrap() == "Positive: 42"
+
+    ok_result_neg = Ok(-1)
+    result2 = await ok_result_neg.and_then_async(async_process)
+    assert result2.is_err()
+    assert is_err_of_type(result2, ValueError)
+
+
+def test_ok_flatten():
+    result1 = Ok(Ok(42))
+    assert result1.flatten() == Ok(42)
+
+    result2 = Ok(Err(ValueError("inner")))
+    assert result2.flatten() == Err(ValueError("inner"))
+
+    result3 = Ok(Ok(Ok("deep")))
+    assert result3.flatten() == Ok("deep")
+
+    result4 = Ok(42)  # Non-nested Ok
+    assert result4.flatten() == Ok(42)
+
+    result5 = Ok(Ok(Err(ValueError("nested err"))))
+    assert result5.flatten() == Err(ValueError("nested err"))
+
+
+def test_ok_equality_and_hash():
+    ok1 = Ok(42)
+    ok2 = Ok(42)
+    ok3 = Ok(99)
+    err1 = Err(ValueError("error"))
+
+    assert ok1 == ok2
+    assert ok1 != ok3
+    assert ok1 != err1
+    assert ok1 != 42  # Different types
+    assert hash(ok1) == hash(ok2)
+    assert hash(ok1) != hash(ok3)
+
+
+def test_err_properties():
     error = ValueError("test error")
-    err_result = Result.err(error)
-    assert isinstance(err_result, Err)
+    err_result = Err(error)
     assert err_result.error == error
-    assert err_result.is_error()
-    with pytest.raises(ValueError):
-        err_result.unwrap()
-    assert err_result.unwrap_or(42) == 42
+    assert err_result.value is None
+    assert err_result.is_ok() is False
+    assert err_result.is_err() is True
 
-    # Test with different types
-    str_result = Result.ok("hello")
-    assert isinstance(str_result, Ok)
-    assert str_result.value == "hello"
 
-    type_error = TypeError("type error")
-    type_err_result = Result.err(type_error)
-    assert isinstance(type_err_result, Err)
-    assert type_err_result.error == type_error
+def test_err_map():
+    error = ValueError("test error")
+    err_result = Err(error)
+    mapped_result = err_result.map(lambda x: x + 1)  # type: ignore # Function should not be called
+    assert err_result == mapped_result  # Should return self
 
-    # Test with complex types
-    list_result = Result.ok([1, 2, 3])
-    assert isinstance(list_result, Ok)
-    assert list_result.value == [1, 2, 3]
 
-    dict_result = Result.ok({"key": "value"})
-    assert isinstance(dict_result, Ok)
-    assert dict_result.value == {"key": "value"}
+@pytest.mark.asyncio
+async def test_err_map_async():
+    error = ValueError("test error")
+    err_result = Err(error)
+
+    async def async_add_one(x: int) -> int:
+        await asyncio.sleep(0)
+        pytest.fail("Async map function should not be called on Err")
+        return x + 1
+
+    mapped_result = await err_result.map_async(async_add_one)  # type: ignore # Function should not be called
+    assert err_result == mapped_result  # Should return self
+
+
+def test_err_and_then():
+    error = ValueError("test error")
+    err_result = Err(error)
+
+    def process(x: int) -> Result[str, ValueError]:
+        pytest.fail("and_then function should not be called on Err")
+        return Ok(f"Processed: {x}")
+
+    result = err_result.and_then(process)
+    assert err_result == result  # Should return self
+
+
+@pytest.mark.asyncio
+async def test_err_and_then_async():
+    error = ValueError("test error")
+    err_result = Err(error)
+
+    async def async_process(x: int) -> Result[str, ValueError]:
+        await asyncio.sleep(0)
+        pytest.fail("Async and_then function should not be called on Err")
+        return Ok(f"Processed: {x}")
+
+    result = await err_result.and_then_async(async_process)
+    assert err_result == result  # Should return self
+
+
+def test_err_flatten():
+    result1 = Err(ValueError("outer"))
+    assert result1.flatten() == Err(ValueError("outer"))
+
+    # Flatten should not affect Err, even if nested within Ok conceptually
+    # (though type system prevents Ok(Err(...)))
+    # Let's test Err directly
+    # result2 = Err(Err(ValueError("inner"))) # This shouldn't happen with current types but test logic
+    # assert result2.flatten() == Err(Err(ValueError("inner")))
+
+
+def test_err_equality_and_hash():
+    err1 = Err(ValueError("error"))
+    err2 = Err(ValueError("error"))
+    err3 = Err(ValueError("different"))
+    err4 = Err(TypeError("error"))
+    ok1 = Ok(42)
+
+    assert err1 == err2
+    assert err1 != err3
+    assert err1 != err4  # Different error types
+    assert err1 != ok1
+    assert err1 != ValueError("error")  # Different types
+    assert hash(err1) == hash(err2)
+    assert hash(err1) != hash(err3)
+    assert hash(err1) != hash(err4)
