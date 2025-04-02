@@ -2,136 +2,159 @@ import asyncio
 import traceback
 from functools import wraps
 from typing import (
+    Any,
     Awaitable,
     Callable,
     Generic,
-    Optional,
+    Literal,
+    NoReturn,
     ParamSpec,
     Type,
     TypeGuard,
     TypeVar,
+    Union,
     cast,
 )
 
-T = TypeVar("T")
-E = TypeVar("E", bound=Exception)
-P = ParamSpec("P")
+T = TypeVar("T", covariant=True)
+E = TypeVar("E", covariant=True, bound=Exception)
+U = TypeVar("U")
 R = TypeVar("R")
+P = ParamSpec("P")
 ExcType = TypeVar("ExcType", bound=Exception)
 
 
-class Result(Generic[T, E]):
-    """A class that represents the result of an operation."""
+class Ok(Generic[T]):
+    """A container for a successful result."""
 
-    def __init__(self, value: Optional[T] = None, error: Optional[E] = None):
-        self.value = value
-        self.error = error
-        self.traceback: Optional[str] = None
-
-        # Capture traceback if there's an error
-        if error is not None:
-            self.traceback = "".join(
-                traceback.format_exception(type(error), error, error.__traceback__)
-            )
-
-    def is_error(self) -> bool:
-        """Check if this Result contains an error."""
-        return self.error is not None
-
-    def unwrap(self) -> T:
-        """Return the value or raise the error."""
-        if self.error:
-            raise self.error
-        return cast(T, self.value)
-
-    def unwrap_or(self, default: T) -> T:
-        """Return the value or a default if there's an error."""
-        if self.error:
-            return default
-        return cast(T, self.value)
-
-    # Using TypeGuard to fix the type checking issue
-    def is_error_of_type(self, exc_type: Type[ExcType]) -> TypeGuard[ExcType]:
-        """Check if the error is of a specific type."""
-        return isinstance(self.error, exc_type)
-
-    @staticmethod
-    def ok(value: T) -> "Ok[T, E]":
-        """Create a new Ok instance."""
-        return Ok(value)
-
-    @staticmethod
-    def err(error: E) -> "Err[T, E]":
-        """Create a new Err instance."""
-        return Err(error)
-
-
-class Ok(Result[T, E]):
-    """A class that represents a successful result with a value."""
-
+    __slots__ = ("value",)
     __match_args__ = ("value",)
 
     def __init__(self, value: T):
-        super().__init__(value=value, error=None)
-        self.value: T = value
+        self.value = value
 
-    def is_error(self) -> bool:
-        """Always returns False for Ok instances."""
+    @property
+    def error(self) -> None:
+        return None
+
+    def is_ok(self) -> Literal[True]:
+        return True
+
+    def is_err(self) -> Literal[False]:
         return False
 
     def unwrap(self) -> T:
-        """Return the value (always safe for Ok)."""
         return self.value
 
-    def unwrap_or(self, default: T) -> T:
-        """Return the value (default is ignored for Ok)."""
+    def unwrap_or(self, default: object) -> T:
         return self.value
 
-    def __str__(self) -> str:
-        return f"Ok({self.value})"
+    def map(self, func: Callable[[T], R]) -> "Ok[R]":
+        return Ok(func(self.value))
+
+    async def map_async(self, func: Callable[[T], Awaitable[R]]) -> "Ok[R]":
+        return Ok(await func(self.value))
+
+    def and_then(self, func: Callable[[T], "Result[R, E]"]) -> "Result[R, E]":
+        return func(self.value)
+
+    async def and_then_async(
+        self, func: Callable[[T], Awaitable["Result[R, E]"]]
+    ) -> "Result[R, E]":
+        return await func(self.value)
+
+    def flatten(self) -> "Result[T, E]":
+        result = self
+        while ok(result) and isinstance(result.value, (Ok, Err)):
+            result = result.value
+        return result
+
+    def __hash__(self) -> int:
+        return hash((True, self.value))
+
+    def __eq__(self, other: Any) -> bool:
+        return ok(other) and self.value == other.value
+
+    def __ne__(self, other: Any) -> bool:
+        return not self.__eq__(other)
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return f"Ok({self.value!r})"
 
 
-class Err(Result[T, E]):
-    """A class that represents a failed result with an error."""
+class Err(Generic[E]):
+    """A container for a failed result."""
 
+    __slots__ = ("error",)
     __match_args__ = ("error",)
 
     def __init__(self, error: E):
-        super().__init__(value=None, error=error)
-        self.error: E = error
+        self.error = error
 
-    def is_error(self) -> bool:
-        """Always returns True for Err instances."""
+    @property
+    def value(self) -> None:
+        return None
+
+    def is_ok(self) -> bool:
+        return False
+
+    def is_err(self) -> bool:
         return True
 
-    def unwrap(self):
-        """Always raises the error for Err instances."""
+    def unwrap(self) -> NoReturn:
         raise self.error
 
-    def unwrap_or(self, default: T) -> T:
-        """Return the default (value is always None for Err)."""
+    def unwrap_or(self, default: U) -> U:
         return default
 
-    def __str__(self) -> str:
-        return f"Err({self.error})"
+    def map(self, _: Callable[[E], R]) -> "Err[E]":
+        return self
+
+    async def map_async(self, _: Callable[[E], Awaitable[R]]) -> "Err[E]":
+        return self
+
+    def and_then(self, func: object) -> "Err[E]":
+        return self
+
+    async def and_then_async(self, func: object) -> "Err[E]":
+        return self
+
+    def flatten(self) -> "Err[E]":
+        return self
+
+    def __hash__(self) -> int:
+        return hash((False, type(self.error), str(self.error)))
+
+    def __eq__(self, other: Any) -> bool:
+        if not _err(other):
+            return False
+        return type(self.error) is type(other.error) and str(self.error) == str(
+            other.error
+        )
+
+    def __ne__(self, other: Any) -> bool:
+        return not self.__eq__(other)
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return f"Err({self.error!r})"
 
 
-def safe(func: Callable[P, R]) -> Callable[P, "Result[R, Exception]"]:
+Result = Union[Ok[T], Err[E]]
+"""
+A result type that can be either `Ok` or `Err`.
+"""
+
+
+def safe(func: Callable[P, R]) -> Callable[P, Result[R, Exception]]:
     """
-    Decorator that wraps a synchronous function to return a Result.
+    Decorator that wraps a synchronous function to return a `Result`.
     The decorated function will never raise exceptions.
     Example:
-        >>> @Result.safe
+        >>> @safe
         ... def divide(a: int, b: int) -> float:
         ...     return a / b
         ...
-        >>> result = divide(10, 0)  # Returns Result with ZeroDivisionError
+        >>> result = divide(10, 0)  # -> `Result[float, Exception]`
     """
 
     @wraps(func)
@@ -148,16 +171,14 @@ def safe_with(
     *exc_types: Type[ExcType],
 ) -> Callable[[Callable[P, R]], Callable[P, "Result[R, ExcType]"]]:
     """
-    Decorator factory that wraps a synchronous function to return a Result.
+    Decorator factory that wraps a synchronous function to return a `Result`.
     The decorated function will only catch the specified exception types.
     Example:
-        >>> @Result.safe_with(ZeroDivisionError, ValueError)
+        >>> @safe_with(ZeroDivisionError, ValueError)
         ... def divide(a: int, b: int) -> float:
         ...     return a / b
         ...
-        >>> result = divide(10, 0)  # Returns Result with ZeroDivisionError
-        >>> result = divide("10", 2)  # Returns Result with ValueError
-        >>> result = divide(10, 2)  # Returns Result with value 5.0
+        >>> result = divide(10, 0)  # -> `Result[float, ZeroDivisionError | ValueError]`
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, "Result[R, ExcType]"]:
@@ -180,14 +201,14 @@ def safe_async(
     func: Callable[P, Awaitable[R]],
 ) -> Callable[P, Awaitable["Result[R, Exception]"]]:
     """
-    Decorator that wraps an asynchronous function to return a Result.
+    Decorator that wraps an asynchronous function to return a `Result`.
     The decorated function will never raise exceptions.
     Example:
-        >>> @Result.safe_async
+        >>> @safe_async
         ... async def async_divide(a: int, b: int) -> float:
         ...     return a / b
         ...
-        >>> result = await async_divide(10, 0)  # Returns Result with ZeroDivisionError
+        >>> result = await async_divide(10, 0)  # -> `Result[float, Exception]`
     """
 
     @wraps(func)
@@ -196,7 +217,7 @@ def safe_async(
             value = await func(*args, **kwargs)
             return Ok(value)
         except asyncio.CancelledError as e:
-            return Err(cast(Exception, e))
+            raise e  # Always re-raise CancelledError
         except Exception as e:
             return Err(e)
 
@@ -209,16 +230,14 @@ def safe_async_with(
     [Callable[P, Awaitable[R]]], Callable[P, Awaitable["Result[R, ExcType]"]]
 ]:
     """
-    Decorator factory that wraps an asynchronous function to return a Result.
+    Decorator factory that wraps an asynchronous function to return a `Result`.
     The decorated function will only catch the specified exception types.
     Example:
-        >>> @Result.safe_async_with(ZeroDivisionError, ValueError)
+        >>> @safe_async_with(ZeroDivisionError, ValueError)
         ... async def async_divide(a: int, b: int) -> float:
         ...     return a / b
         ...
-        >>> result = await async_divide(10, 0)  # Returns Result with ZeroDivisionError
-        >>> result = await async_divide("10", 2)  # Returns Result with ValueError
-        >>> result = await async_divide(10, 2)  # Returns Result with value 5.0
+        >>> result = await async_divide(10, 0)  # -> `Result[float, ZeroDivisionError | ValueError]`
     """
 
     def decorator(
@@ -229,8 +248,8 @@ def safe_async_with(
             try:
                 value = await func(*args, **kwargs)
                 return Ok(value)
-            except asyncio.CancelledError:
-                raise  # Always re-raise CancelledError
+            except asyncio.CancelledError as e:
+                raise e  # Always re-raise CancelledError
             except exc_types as e:
                 return Err(cast(ExcType, e))
             # Re-raise other exceptions
@@ -242,6 +261,43 @@ def safe_async_with(
     return decorator
 
 
-def ok(result: Result[T, E]) -> TypeGuard[Ok[T, E]]:
-    """Type guard to check if a Result is an Ok instance."""
+def ok(result: Result[T, E]) -> TypeGuard[Ok[T]]:
+    """Used for type narrowing from `Result` to `Ok`."""
     return isinstance(result, Ok)
+
+
+def _err(result: Result[Any, E]) -> TypeGuard[Err[E]]:
+    """Used for type narrowing from `Result` to `Err`."""
+    return isinstance(result, Err)
+
+
+def is_err_of_type(
+    result: Result[Any, E], exc_type: Type[ExcType]
+) -> TypeGuard[Err[ExcType]]:
+    """Check if error of `Result` is of a specific type."""
+    return _err(result) and isinstance(result.error, exc_type)
+
+
+def traceback_of(result: Result[Any, Exception]) -> str:
+    """Helper function to get the traceback of `Result` if it is an error."""
+    if not _err(result):
+        return ""
+    return "".join(
+        traceback.format_exception(
+            type(result.error), result.error, result.error.__traceback__
+        )
+    )
+
+
+__all__ = [
+    "Ok",
+    "Err",
+    "Result",
+    "ok",
+    "safe",
+    "safe_async",
+    "safe_async_with",
+    "safe_with",
+    "is_err_of_type",
+    "traceback_of",
+]
