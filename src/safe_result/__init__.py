@@ -31,39 +31,108 @@ class Ok(Generic[T]):
     __match_args__ = ("value",)
 
     def __init__(self, value: T):
+        """Initializes Ok with a success value."""
         self.value = value
 
     @property
     def error(self) -> None:
+        """Returns None as Ok represents success."""
         return None
 
     def is_ok(self) -> Literal[True]:
+        """Returns True, indicating this is an Ok result."""
         return True
 
     def is_err(self) -> Literal[False]:
+        """Returns False, indicating this is not an Err result."""
         return False
 
     def unwrap(self) -> T:
+        """
+        Returns the contained Ok value.
+
+        Example:
+            >>> Ok(42).unwrap()
+            42
+        """
         return self.value
 
     def unwrap_or(self, default: object) -> T:
+        """
+        Returns the contained Ok value.
+
+        Args:
+            default: A default value (ignored in Ok).
+
+        Example:
+            >>> Ok(42).unwrap_or(0)
+            42
+        """
         return self.value
 
     def map(self, func: Callable[[T], R]) -> "Ok[R]":
+        """
+        Maps an Ok[T] to Ok[R] by applying a function to the contained value.
+
+        Args:
+            func: The function to apply to the Ok value.
+
+        Example:
+            >>> Ok(5).map(lambda x: x * 2)
+            Ok(10)
+        """
         return Ok(func(self.value))
 
     async def map_async(self, func: Callable[[T], Awaitable[R]]) -> "Ok[R]":
+        """
+        Maps an Ok[T] to Ok[R] by applying an async function to the contained value.
+
+        Args:
+            func: The async function to apply to the Ok value.
+        """
         return Ok(await func(self.value))
 
     def and_then(self, func: Callable[[T], "Result[R, E]"]) -> "Result[R, E]":
+        """
+        Calls `func` if the result is Ok, otherwise returns the Err value.
+        Useful for chaining operations that might fail.
+
+        Args:
+            func: A function that takes the Ok value and returns a Result.
+
+        Example:
+            >>> def check_positive(n): return Ok(n) if n > 0 else Err("Not positive")
+            >>> Ok(5).and_then(check_positive)
+            Ok(5)
+            >>> Ok(-1).and_then(check_positive)
+            Err('Not positive')
+        """
         return func(self.value)
 
     async def and_then_async(
         self, func: Callable[[T], Awaitable["Result[R, E]"]]
     ) -> "Result[R, E]":
+        """
+        Calls async `func` if the result is Ok, otherwise returns the Err value.
+        Useful for chaining async operations that might fail.
+
+        Args:
+            func: An async function that takes the Ok value and returns a Result.
+        """
         return await func(self.value)
 
     def flatten(self) -> "Result[T, E]":
+        """
+        Converts Result[Result[T, E], E] to Result[T, E].
+
+        Example:
+            >>> Ok(Ok(42)).flatten()
+            Ok(42)
+            >>> Ok(Err("nested error")).flatten()
+            Err('nested error')
+            >>> Ok(42).flatten() # No-op if not nested
+            Ok(42)
+        """
         result = self
         while ok(result) and isinstance(result.value, (Ok, Err)):
             result = result.value
@@ -89,37 +158,100 @@ class Err(Generic[E]):
     __match_args__ = ("error",)
 
     def __init__(self, error: E):
+        """Initializes Err with an error value (usually an Exception)."""
         self.error = error
 
     @property
     def value(self) -> None:
+        """Returns None as Err represents failure."""
         return None
 
     def is_ok(self) -> bool:
+        """Returns False, indicating this is not an Ok result."""
         return False
 
     def is_err(self) -> bool:
+        """Returns True, indicating this is an Err result."""
         return True
 
     def unwrap(self) -> NoReturn:
+        """
+        Raises the contained error.
+
+        Raises:
+            E: The contained error.
+
+        Example:
+            >>> Err(ValueError("Failure")).unwrap() # Raises ValueError
+        """
         raise self.error
 
     def unwrap_or(self, default: U) -> U:
+        """
+        Returns the provided default value.
+
+        Args:
+            default: The default value to return.
+
+        Example:
+            >>> Err(ValueError()).unwrap_or(42)
+            42
+        """
         return default
 
     def map(self, _: Callable[[E], R]) -> "Err[E]":
+        """
+        Returns self, as mapping a function over an Err yields the original Err.
+
+        Args:
+            _: The function (ignored).
+
+        Example:
+            >>> Err("error").map(lambda x: x + 1)
+            Err('error')
+        """
         return self
 
     async def map_async(self, _: Callable[[E], Awaitable[R]]) -> "Err[E]":
+        """
+        Returns self, as mapping an async function over an Err yields the original Err.
+
+        Args:
+            _: The async function (ignored).
+        """
         return self
 
     def and_then(self, func: object) -> "Err[E]":
+        """
+        Returns self, as chaining an operation after an Err yields the original Err.
+
+        Args:
+            func: The function (ignored).
+
+        Example:
+            >>> def check(n): return Ok(n)
+            >>> Err("init error").and_then(check)
+            Err('init error')
+        """
         return self
 
     async def and_then_async(self, func: object) -> "Err[E]":
+        """
+        Returns self, as chaining an async operation after an Err yields the original Err.
+
+        Args:
+            func: The async function (ignored).
+        """
         return self
 
     def flatten(self) -> "Err[E]":
+        """
+        Returns self, as flattening an Err has no effect.
+
+        Example:
+            >>> Err("error").flatten()
+            Err('error')
+        """
         return self
 
     def __hash__(self) -> int:
@@ -267,11 +399,11 @@ def ok(result: Result[T, E]) -> TypeGuard[Ok[T]]:
 
 
 def _err(result: Result[Any, E]) -> TypeGuard[Err[E]]:
-    """Used for type narrowing from `Result` to `Err`."""
+    """Internal helper for type narrowing from `Result` to `Err`."""
     return isinstance(result, Err)
 
 
-def is_err_of_type(
+def err_type(
     result: Result[Any, E], exc_type: Type[ExcType]
 ) -> TypeGuard[Err[ExcType]]:
     """Check if error of `Result` is of a specific type."""
@@ -279,7 +411,7 @@ def is_err_of_type(
 
 
 def traceback_of(result: Result[Any, Exception]) -> str:
-    """Helper function to get the traceback of `Result` if it is an error."""
+    """Helper function to get the traceback of an error result."""
     if not _err(result):
         return ""
     return "".join(
@@ -298,6 +430,6 @@ __all__ = [
     "safe_async",
     "safe_async_with",
     "safe_with",
-    "is_err_of_type",
+    "err_type",
     "traceback_of",
 ]

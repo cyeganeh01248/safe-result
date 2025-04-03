@@ -7,7 +7,7 @@ from safe_result import (
     Err,
     Ok,
     Result,
-    is_err_of_type,
+    err_type,
     ok,
     safe,
     safe_async,
@@ -47,8 +47,8 @@ def test_result_str_repr():
 
 def test_result_error_type_checking():
     result = Err(ValueError("test error"))
-    assert is_err_of_type(result, ValueError)
-    assert not is_err_of_type(result, TypeError)
+    assert err_type(result, ValueError)
+    assert not err_type(result, TypeError)
 
 
 def test_ok_type_guard():
@@ -70,7 +70,7 @@ def test_safe_decorator():
 
     result2 = divide(10, 0)
     assert result2.is_err()
-    assert is_err_of_type(result2, ZeroDivisionError)
+    assert err_type(result2, ZeroDivisionError)
 
 
 def test_safe_with_decorator():
@@ -86,7 +86,7 @@ def test_safe_with_decorator():
     # Test catching ZeroDivisionError
     result2 = divide(10, 0)
     assert result2.is_err()
-    assert is_err_of_type(result2, ZeroDivisionError)
+    assert err_type(result2, ZeroDivisionError)
 
     # Test catching ValueError
     @safe_with(ValueError)
@@ -95,7 +95,7 @@ def test_safe_with_decorator():
 
     result3 = convert_to_int("not a number")
     assert result3.is_err()
-    assert is_err_of_type(result3, ValueError)
+    assert err_type(result3, ValueError)
 
     # Test that other exceptions are not caught
     @safe_with(ValueError)
@@ -153,7 +153,7 @@ async def test_safe_async_decorator():
     # Test error case
     result2 = await async_divide(10, 0)
     assert result2.is_err()
-    assert is_err_of_type(result2, ZeroDivisionError)
+    assert err_type(result2, ZeroDivisionError)
 
     # Test with asyncio.CancelledError
     @safe_async
@@ -180,7 +180,7 @@ async def test_safe_async_with_decorator():
     # Test catching ZeroDivisionError
     result2 = await async_divide(10, 0)
     assert result2.is_err()
-    assert is_err_of_type(result2, ZeroDivisionError)
+    assert err_type(result2, ZeroDivisionError)
 
     # Test that other exceptions are not caught
     @safe_async_with(ValueError)
@@ -375,7 +375,7 @@ def test_ok_and_then():
     ok_result_neg = Ok(-1)
     result2 = ok_result_neg.and_then(process)
     assert result2.is_err()
-    assert is_err_of_type(result2, ValueError)
+    assert err_type(result2, ValueError)
 
 
 @pytest.mark.asyncio
@@ -395,7 +395,7 @@ async def test_ok_and_then_async():
     ok_result_neg = Ok(-1)
     result2 = await ok_result_neg.and_then_async(async_process)
     assert result2.is_err()
-    assert is_err_of_type(result2, ValueError)
+    assert err_type(result2, ValueError)
 
 
 def test_ok_flatten():
