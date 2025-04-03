@@ -5,7 +5,7 @@ A Python package for elegant error handling, inspired by Rust's Result type.
 ## Installation
 
 ```bash
-uv pip install "git+https://github.com/overflowy/safe-result"
+pip install safe-result
 ```
 
 ## Overview
