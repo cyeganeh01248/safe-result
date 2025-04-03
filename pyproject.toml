@@ -3,13 +3,17 @@ name = "safe-result"
 version = "4.0.1"
 description = "A Python library providing a Result type for elegant error handling, inspired by Rust's Result type."
 readme = "README.md"
-authors = [
-    { name = "overflowy", email = "overflowy@riseup.net" }
-]
+authors = [{ name = "overflowy", email = "overflowy@riseup.net" }]
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["pytest>=8.3.5", "pytest-asyncio>=0.25.3"]
 license = { text = "MIT" }
-keywords = ["error-handling", "result", "rust-inspired", "functional", "type-safety"]
+keywords = [
+    "error-handling",
+    "result",
+    "rust-inspired",
+    "functional",
+    "type-safety",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -34,6 +38,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["safe_result"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
 
 [dependency-groups]
 dev = [
