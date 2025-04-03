@@ -184,8 +184,8 @@ print(combined_op(Ok(10), Err(ValueError("Fail"))))  # -> Err(ValueError('Fail')
 **`unwrap_or(default)`**: Returns the value if `Ok`, otherwise returns the `default` value.
 
 ```python
-print(Ok(42).unwrap_or(0))       # -> 42
-print(Err("Error").unwrap_or(0)) # -> 0
+print(Ok(42).unwrap_or(0))        # -> 42
+print(Err("Error").unwrap_or(0))  # -> 0
 ```
 
 **`map(func)`**: Applies `func` to the value if `Ok`, returns a new `Ok` with the result. If `Err`, returns the original `Err` unchanged.
@@ -225,9 +225,9 @@ async def check_positive_async(n):
     return Ok(n) if n > 0 else Err("Not positive async")
 
 async def run_and_then_async():
-    print(await Ok(5).and_then_async(check_positive_async))       # -> Ok(5)
-    print(await Ok(-1).and_then_async(check_positive_async))      # -> Err('Not positive async')
-    print(await Err("Fail").and_then_async(check_positive_async)) # -> Err('Fail')
+    print(await Ok(5).and_then_async(check_positive_async))        # -> Ok(5)
+    print(await Ok(-1).and_then_async(check_positive_async))       # -> Err('Not positive async')
+    print(await Err("Fail").and_then_async(check_positive_async))  # -> Err('Fail')
 ```
 
 **`flatten()`**: Converts `Result[Result[T, E], E]` to `Result[T, E]`. Flattens nested `Ok(Ok(value))` to `Ok(value)` and `Ok(Err(error))` to `Err(error)`. Has no effect on non-nested `Result` or `Err`.
@@ -265,7 +265,7 @@ from safe_result import safe, traceback_of
 def cause_error():
     return 1 / 0
 
-error_result = cause_error() # -> Err(ZeroDivisionError('division by zero'))
+error_result = cause_error()  # -> Err(ZeroDivisionError('division by zero'))
 
 if not ok(error_result):
     tb = traceback_of(error_result)
@@ -300,9 +300,9 @@ async def main():
             print("Request timed out - the server took too long to respond")
         case Err(httpx.HTTPStatusError as e):
             print(f"HTTP Error: {e.response.status_code} for URL: {e.request.url}")
-        case Err(e): # Catch other specified errors like ConnectionError
+        case Err(e):  # Catch other specified errors like ConnectionError
              print(f"Network error: {e}")
-             print(traceback_of(result_timeout)) # Print traceback for unexpected errors
+             print(traceback_of(result_timeout))  # Print traceback for unexpected errors
 
     # Example with 404
     result_404 = await fetch_api_data("https://httpbin.org/status/404")
