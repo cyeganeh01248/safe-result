@@ -18,8 +18,8 @@ Key features:
 - Type-safe result handling with full generics support
 - Pattern matching support for elegant error handling
 - Type guards for safe access and type narrowing
-- Decorators to automatically wrap function returns in result objects
-- Methods for transforming and chaining results
+- Decorators to automatically wrap function returns in `Result` objects
+- Methods for transforming and chaining results (`map`, `map_async`, `and_then`, `and_then_async`, `flatten`)
 - Methods for accessing values, providing defaults or propagating errors within a `@safe` context
 - Handy traceback capture for comprehensive error information
 
@@ -303,11 +303,6 @@ async def main():
         case Err(e):  # Catch other specified errors like ConnectionError
              print(f"Network error: {e}")
              print(traceback_of(result_timeout))  # Print traceback for unexpected errors
-
-    # Example with 404
-    result_404 = await fetch_api_data("https://httpbin.org/status/404")
-    if err_type(result_404, httpx.HTTPStatusError):
-        print(f"Got expected 404 error: {result_404.error}")
 
     # Example with success
     result_ok = await fetch_api_data("https://httpbin.org/json")
