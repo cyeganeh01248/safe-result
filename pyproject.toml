@@ -1,6 +1,6 @@
 [project]
 name = "safe-result"
-version = "4.0.2"
+version = "4.0.3"
 description = "A Python library providing a Result type for elegant error handling, inspired by Rust's Result type."
 readme = "README.md"
 authors = [{ name = "overflowy", email = "overflowy@riseup.net" }]
