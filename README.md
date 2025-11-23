@@ -2,6 +2,8 @@
 
 A Python package for elegant error handling, inspired by Rust's Result type.
 
+![infopgrahic](https://github.com/user-attachments/assets/9fea92b6-5f03-4a4b-a5be-13f521b126b7)
+
 ## Installation
 
 ```bash
